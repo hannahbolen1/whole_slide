@@ -1,0 +1,21 @@
+name: /yoren64/users/hannahbolen/conda_envs/slide_env
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python=3.11
+  - jupyter
+  - matplotlib
+  - openslide
+  - openslide-python
+  - pandas
+  - bioconda::bftools
+  - scikit-image
+  - conda-forge::dask
+  - ca-certificates
+  - certifi
+  - openssl
+  - conda-forge::zarr
+  - spyder-kernels=3.1
+  - conda-forge::parallel
+prefix: /yoren64/users/hannahbolen/conda_envs/slide_env
