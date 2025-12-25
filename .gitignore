@@ -1,1 +1,4 @@
 environment.yml
+.DS_Store
+__pycache__/ops_process.cpython-311.pyc
+__pycache__/utils.cpython-311.pyc
