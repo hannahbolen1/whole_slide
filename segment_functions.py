@@ -38,9 +38,9 @@ def ops_timing_summary():
     lines = []
     for name, secs in rows:
         pct = (secs / total * 100.0) if total > 0 else 0.0
-        lines.append(f"{name:24s} {secs:8.3f}s  {pct:5.1f}%")
-    lines.append(f"{'total':24s} {total:8.3f}s  100.0%")
-    return "\n".join(lines)
+        lines.append(f"{name:24s} {secs:8.3f}s  {pct:5.1f}%\n")
+    lines.append(f"{'total':24s} {total:8.3f}s  100.0%\n")
+    return lines
 
 
 # SEGMENT
@@ -52,13 +52,12 @@ def find_nuclei(dapi, threshold, area_min=50, area_max=500,
 
     with ops_timer("simple_binary"):
     #     mask = binarize(dapi, radius, area_min)
-        print(";laskdjf")
         mask = simple_binary(dapi, area_min)
     with ops_timer("label"):
         labeled = skimage.measure.label(mask)
     with ops_timer("filter_by_region_initial"):
         labeled = filter_by_region(
-            labeled, score, threshold, intensity_image=dapi
+            labeled, threshold, intensity_image=dapi
         ) > 0
 
     # only fill holes below minimum area
@@ -68,7 +67,7 @@ def find_nuclei(dapi, threshold, area_min=50, area_max=500,
         difference = skimage.measure.label(filled != labeled)
 
     with ops_timer("filter_by_region_holes"):
-        change = filter_by_region(difference, lambda r: r.area < area_min, 0) > 0
+        change = filter_by_region(difference, score=lambda r: r.area < area_min, threshold=0) > 0
     with ops_timer("apply_hole_fill"):
         labeled[change] = filled[change]
 
@@ -77,7 +76,7 @@ def find_nuclei(dapi, threshold, area_min=50, area_max=500,
 
     with ops_timer("filter_by_region_final"):
         result = filter_by_region(
-            nuclei, lambda r: area_min < r.area < area_max, threshold
+            nuclei, score=lambda r: area_min < r.area < area_max, threshold=threshold
         )
 
     return result
