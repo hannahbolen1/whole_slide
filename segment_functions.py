@@ -2,7 +2,7 @@
 
 import time
 from contextlib import contextmanager
-import skimage
+import skimage as ski
 import skimage.segmentation
 import skimage.morphology
 import numpy as np
@@ -44,14 +44,16 @@ def ops_timing_summary():
 
 
 # SEGMENT
-def find_nuclei(dapi, threshold, radius=15, area_min=50, area_max=500,
+def find_nuclei(dapi, threshold, area_min=50, area_max=500,
                 score=lambda r: r.mean_intensity,
                 smooth=1.35):
     """
     """
 
-    with ops_timer("binarize"):
-        mask = binarize(dapi, radius, area_min)
+    with ops_timer("simple_binary"):
+    #     mask = binarize(dapi, radius, area_min)
+        print(";laskdjf")
+        mask = simple_binary(dapi, area_min)
     with ops_timer("label"):
         labeled = skimage.measure.label(mask)
     with ops_timer("filter_by_region_initial"):
@@ -148,3 +150,8 @@ def apply_watershed(img, smooth=4):
     # apply watershed algorithm to the distance transform
     result = skimage.segmentation.watershed(-distance, markers, mask=img)
     return result.astype(np.uint16)
+
+def simple_binary(image, min_size, sigma = 1.8, global_threshold = 7):
+    mask = ski.util.img_as_ubyte(ski.filters.gaussian(image, sigma)) >= global_threshold
+    mask = ski.morphology.remove_small_objects(mask, min_size)
+    return mask
