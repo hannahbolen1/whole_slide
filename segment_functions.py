@@ -104,16 +104,25 @@ def filter_by_region(labeled, threshold, score=lambda r: r.mean_intensity, inten
     determine the minimum score at which a region is kept.
     If `relabel` is true, the regions are relabeled starting from 1.
     """
+    # make copy of labeled image
     labeled = labeled.copy().astype(int)
+    # calculate region properties
     regions = skimage.measure.regionprops(labeled, intensity_image=intensity_image)
+    # caluclate scores for each region
     scores = np.array([score(r) for r in regions])
 
     if all([s in (True, False) for s in scores]):
+        # identify regions to cut based on boolean scores
         cut = [r.label for r, s in zip(regions, scores) if not s]
     else:
-        t = threshold(scores)
+        # determine threshold value for scores
+        if callable(threshold):
+            t = threshold(scores)
+        else:
+            t = threshold
         cut = [r.label for r, s in zip(regions, scores) if s < t]
 
+    # remove identified regions from the labeled image
     labeled.flat[np.isin(labeled.flat[:], cut)] = 0
     
     if relabel:
@@ -126,17 +135,16 @@ def apply_watershed(img, smooth=4):
     distance = ndi.distance_transform_edt(img)
     if smooth > 0:
         distance = skimage.filters.gaussian(distance, sigma=smooth)
-    local_max = skimage.feature.peak_local_max(
-                    distance, footprint=np.ones((4, 4)), 
-                    exclude_border=False, labels=img)
-
-    # Newer skimage returns coordinates; convert to mask for labeling.
-    if local_max.shape != distance.shape:
-        mask = np.zeros_like(distance, dtype=bool)
-        if local_max.size:
-            mask[tuple(local_max.T)] = True
-        local_max = mask
-
+    # Identify local maxima in the distance transform
+    coordinates = skimage.feature.peak_local_max(
+        distance, min_distance=1, footprint=np.ones((3, 3)), exclude_border=False
+    )
+    # Create a boolean mask of local maxima
+    local_max = np.zeros_like(distance, dtype=bool)
+    if len(coordinates) > 0:
+        local_max[tuple(coordinates.T)] = True
+    # label the local maxima
     markers = ndi.label(local_max)[0]
+    # apply watershed algorithm to the distance transform
     result = skimage.segmentation.watershed(-distance, markers, mask=img)
     return result.astype(np.uint16)
