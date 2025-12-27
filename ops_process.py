@@ -239,6 +239,13 @@ class Align:
         return Align.apply_offsets(data_, offsets)
 
     @staticmethod
+    def apply_window(data, window):
+        height, width = data.shape[-2:]
+        find_border = lambda x: int((x/2.) * (1 - 1/float(window)))
+        i, j = find_border(height), find_border(width)
+        return data[..., i:height - i, j:width - j]
+
+    @staticmethod
     def align_between_cycles(data, channel_index, upsample_factor=4, window=1,
     		return_offsets=False):
         # offsets from target channel
@@ -252,17 +259,9 @@ class Align:
 
         aligned = np.array(warped).transpose([1, 0, 2, 3])
         if return_offsets:
-        	return aligned, offsets
+            return aligned, offsets
         else:
         	return aligned
-
-    @staticmethod
-    def apply_window(data, window):
-        height, width = data.shape[-2:]
-        find_border = lambda x: int((x/2.) * (1 - 1/float(window)))
-        i, j = find_border(height), find_border(width)
-        return data[..., i:height - i, j:width - j]
-
 
 # SEGMENT
 def find_nuclei(dapi, threshold, radius=15, area_min=50, area_max=500,
