@@ -33,7 +33,7 @@ from scipy.spatial import ConvexHull, QhullError
 import skimage.measure
 import skimage.morphology
 from skimage import img_as_ubyte
-from lib.shared.feature_utils import (
+from myutils import (
     correlate_channels_masked,
     masked,
     correlate_channels_all_multichannel,
@@ -120,30 +120,8 @@ correlation_columns_multichannel = {
     ],
 }
 
-# MeasureGranularity
+# Remove MeasureGranularity
 
-# In CellProfiler this is a per-image metric, but is implemented here as a per-object metric.
-# to re-produce values from paper, use start_radius = 10, spectrum_length = 16, sample=sample_background=0.25
-# values here to optimize for fine speckles in single cells: THESE PARAMETERS ARE HIGHLY EXPERIMENT-DEPENDENT
-
-# In practice, this has been found hard to tune for each experiment/channel, and computationally expensive,
-# thus these features are not advised for most applications.
-
-GRANULARITY_BACKGROUND = 10  # this should be a bit larger than the radius of the features, i.e., "granules", of interest after downsampling
-GRANULARITY_BACKGROUND_DOWNSAMPLE = 1
-GRANULARITY_DOWNSAMPLE = 1
-GRANULARITY_LENGTH = 16
-
-granularity_features = {
-    "granularity_spectrum": lambda r: granularity_spectrum(
-        r.intensity_image_full,
-        r.image,
-        background_radius=GRANULARITY_BACKGROUND,
-        spectrum_length=GRANULARITY_LENGTH,
-        downsample=GRANULARITY_DOWNSAMPLE,
-        background_downsample=GRANULARITY_BACKGROUND_DOWNSAMPLE,
-    )
-}
 
 # MeasureObjectIntensity
 EDGE_CONNECTIVITY = 2  # cellprofiler uses edge connectivity of 1, which exlucdes pixels catty-corner to a boundary
@@ -669,7 +647,7 @@ def measure_colocalization(A, B, threshold="otsu"):
         A_thresh, B_thresh = otsu(A), otsu(B)
     elif threshold == "costes":
         A_thresh, B_thresh = costes_threshold(A, B)
-    elif ifinstance(threshold, float) & (0 <= threshold <= 1):
+    elif isinstance(threshold, float) & (0 <= threshold <= 1):
         A_thresh, B_thresh = (threshold * A.max(), threshold * B.max())
     else:
         raise ValueError(
@@ -901,7 +879,7 @@ def mass_displacement_grayscale(local_centroid, intensity_image):
 
 
 def closest_objects(labeled, n_cpu=1):
-    from lib.shared.feature_table_utils import feature_table
+    from myutils import feature_table
     from scipy.spatial import cKDTree
 
     features = {

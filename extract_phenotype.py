@@ -20,8 +20,7 @@ from cp_emulator import (
     shape_columns,
     neighbor_measurements,
 )
-from myutils import log_ndi, extract_features, extract_features_bare
-from lib.phenotype.constants import DEFAULT_METADATA_COLS
+from myutils import log_ndi, extract_features, extract_features_bare, DEFAULT_METADATA_COLS
 
 
 def extract_phenotype_cp_multichannel(
