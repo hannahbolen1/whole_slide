@@ -150,7 +150,7 @@ def apply_watershed(img, smooth=4):
     result = skimage.segmentation.watershed(-distance, markers, mask=img)
     return result.astype(np.uint16)
 
-def simple_binary(image, min_size, sigma = 1.8, global_threshold = 7):
+def simple_binary(image, min_size, sigma = 1.8, global_threshold = 100):
     mask = ski.util.img_as_ubyte(ski.filters.gaussian(image, sigma)) >= global_threshold
     mask = ski.morphology.remove_small_objects(mask, min_size)
     return mask

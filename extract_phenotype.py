@@ -10,6 +10,7 @@ import skimage.filters
 import skimage.feature
 import skimage.segmentation
 from scipy import ndimage as ndi
+import importlib
 
 from cp_emulator import (
     grayscale_features_multichannel,
@@ -26,8 +27,8 @@ from myutils import log_ndi, extract_features, extract_features_bare, DEFAULT_ME
 def extract_phenotype_cp_multichannel(
     data_phenotype,
     nuclei,
-    cells,
-    wildcards,
+    wildcards=None,
+    cells = None,
     cytoplasms=None,
     nucleus_channels="all",
     cell_channels="all",
@@ -39,9 +40,21 @@ def extract_phenotype_cp_multichannel(
 
     Updated version with proper column ordering.
     """
-    # If nuclei or cells are empty, return an empty DataFrame
-    if np.sum(nuclei) == 0 or np.sum(cells) == 0:
+    # If nuclei is empty, return an empty DataFrame
+    if np.sum(nuclei) == 0:
         return pd.DataFrame(columns=["well", "tile"])
+    
+    if wildcards is None:
+        wildcards = {}
+    
+    if hasattr(nuclei, "compute"):
+        nuclei = nuclei.compute()
+    nuclei = np.asarray(nuclei)
+
+    # if hasattr(data_phenotype, "compute"):
+    #     data_phenotype = data_phenotype.compute()
+    # data_phenotype = np.asarray(data_phenotype)
+
 
     # Check if all channels should be used
     if nucleus_channels == "all":
@@ -65,9 +78,10 @@ def extract_phenotype_cp_multichannel(
     dfs = []
 
     # Define features
-    features = grayscale_features_multichannel.copy()
-    features.update(correlation_features_multichannel)
-    features.update(shape_features)
+    #features = grayscale_features_multichannel.copy()
+    #features = correlation_features_multichannel.copy()
+    #features.update(shape_features)
+    features = dict()
 
     # Define function to create column map
     def make_column_map(channels):
@@ -102,12 +116,12 @@ def extract_phenotype_cp_multichannel(
 
     # Create column maps for nucleus and cell
     nucleus_columns = make_column_map(nucleus_channels)
-    cell_columns = make_column_map(cell_channels)
+    # cell_columns = make_column_map(cell_channels)
 
     # Extract nucleus features
     dfs.append(
         extract_features(
-            data_phenotype[..., nucleus_channels, :, :],
+            data_phenotype[nucleus_channels, :, :],
             nuclei,
             dict(),
             features,
@@ -118,19 +132,19 @@ def extract_phenotype_cp_multichannel(
         .add_prefix("nucleus_")
     )
 
-    # Extract cell features
-    dfs.append(
-        extract_features(
-            data_phenotype[..., cell_channels, :, :],
-            cells,
-            dict(),
-            features,
-            multichannel=True,
-        )
-        .rename(columns=cell_columns)
-        .set_index("label")
-        .add_prefix("cell_")
-    )
+    # # Extract cell features
+    # dfs.append(
+    #     extract_features(
+    #         data_phenotype[..., cell_channels, :, :],
+    #         cells,
+    #         dict(),
+    #         features,
+    #         multichannel=True,
+    #     )
+    #     .rename(columns=cell_columns)
+    #     .set_index("label")
+    #     .add_prefix("cell_")
+    # )
 
     # Extract cytoplasmic features if cytoplasms are provided
     if cytoplasms is not None:
@@ -151,12 +165,12 @@ def extract_phenotype_cp_multichannel(
     # Extract foci features if foci channel is provided
     if foci_channel is not None:
         foci = find_foci(
-            data_phenotype[..., foci_channel, :, :], remove_border_foci=True
+            data_phenotype[foci_channel, :, :], remove_border_foci=False
         )
         dfs.append(
-            extract_features_bare(foci, cells, features=foci_features)
+            extract_features_bare(foci, nuclei, features=foci_features)
             .set_index("label")
-            .add_prefix(f"cell_{channel_names[foci_channel]}_")
+            .add_prefix(f"nucleus_{channel_names[foci_channel]}_")
         )
 
     # Extract nucleus and cell neighbors
@@ -166,11 +180,11 @@ def extract_phenotype_cp_multichannel(
         .add_prefix("nucleus_")
     )
 
-    dfs.append(
-        neighbor_measurements(cells, distances=[1])
-        .set_index("label")
-        .add_prefix("cell_")
-    )
+    # dfs.append(
+    #     neighbor_measurements(cells, distances=[1])
+    #     .set_index("label")
+    #     .add_prefix("cell_")
+    # )
 
     if cytoplasms is not None:
         dfs.append(
@@ -188,8 +202,7 @@ def extract_phenotype_cp_multichannel(
 
     # Apply column ordering
     result_df = order_dataframe_columns(result_df)
-
-    return result_df
+    return result_df, foci
 
 
 def order_dataframe_columns(df, metadata_cols=None, label_col="label"):
@@ -301,7 +314,7 @@ def apply_watershed(img, smooth=4):
 
     # Identify local maxima in the distance transform
     local_max_coords = skimage.feature.peak_local_max(
-        distance, footprint=np.ones((3, 3)), exclude_border=False
+        distance, min_distance=1, footprint=np.ones((3, 3)), exclude_border=False
     )
 
     # Create a boolean mask for peaks
@@ -368,3 +381,82 @@ foci_features = {
     "foci_count": lambda r: count_labels(r.intensity_image),
     "foci_area": lambda r: (r.intensity_image > 0).sum(),
 }
+
+
+
+def outline_mask(arr, direction="outer", width=1):
+    """Remove interior of label mask in `arr`.
+
+    Args:
+        arr (numpy.ndarray): The input label mask array.
+        direction (str, optional): The direction of outlining. 'outer' outlines the outer boundary, 'inner' outlines the inner boundary. Default is 'outer'.
+        width (int, optional): The width of the structuring element used for erosion and dilation. Default is 1.
+
+    Returns:
+        numpy.ndarray: The label mask array with the outlined interior removed.
+
+    Raises:
+        ValueError: If `direction` is neither 'outer' nor 'inner'.
+    """
+    selem = skimage.morphology.disk(
+        width
+    )  # Create a disk-shaped structuring element with the specified width
+    arr = (
+        arr.copy()
+    )  # Create a copy of the input array to avoid modifying the original array
+    if direction == "outer":  # If outlining direction is 'outer'
+        mask = skimage.morphology.erosion(
+            arr, selem
+        )  # Erode the mask using the structuring element
+        arr[mask > 0] = 0  # Set interior pixels to 0
+        return arr  # Return the modified array
+    elif direction == "inner":  # If outlining direction is 'inner'
+        mask1 = (
+            skimage.morphology.erosion(arr, selem) == arr
+        )  # Create a mask for pixels on the inner boundary
+        mask2 = (
+            skimage.morphology.dilation(arr, selem) == arr
+        )  # Create a mask for pixels on the outer boundary
+        arr[mask1 & mask2] = (
+            0  # Set pixels within the inner boundary and outside the outer boundary to 0
+        )
+        return arr  # Return the modified array
+    else:  # If direction is neither 'outer' nor 'inner'
+        raise ValueError(direction)  # Raise a ValueError
+
+
+def image_segmentation_annotations(data, nuclei, cells):
+    """Annotate outlines of nuclei and cells on image data.
+
+    This function overlays outlines of nuclei and cells on the provided image data.
+
+    Args:
+        data (numpy.ndarray): Image data with shape (channels, height, width).
+        nuclei (numpy.ndarray): Array representing nuclei outlines.
+        cells (numpy.ndarray): Array representing cells outlines.
+
+    Returns:
+        numpy.ndarray: Annotated image data with outlines of nuclei and cells.
+    """
+    # Ensure data has at least 3 dimensions
+    if data.ndim == 2:
+        data = data[None]
+
+    # Get dimensions of the image data
+    channels, height, width = data.shape
+
+    # Create an array to store annotated data
+    annotated = np.zeros((channels + 1, height, width), dtype=np.uint16)
+
+    # Generate combined mask for nuclei and cells outlines
+    mask = (outline_mask(nuclei, direction="inner") > 0) + (
+        outline_mask(cells, direction="inner") > 0
+    )
+
+    # Copy original data to annotated data
+    annotated[:channels] = data
+
+    # Add combined mask to the last channel
+    annotated[channels] = mask
+
+    return np.squeeze(annotated)
