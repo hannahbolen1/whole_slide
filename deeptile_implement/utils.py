@@ -4,7 +4,7 @@ from scipy import ndimage as ndi
 import numpy as np
 
 @lift
-def segment_foci_tiled(tile, radius=3, threshold=10, remove_border_foci=False, regions=None):
+def segment_foci_tiled(tiles, **kwargs):
     """Detect foci in the given image using a white tophat filter and other processing steps.
     
     Args:
@@ -15,10 +15,10 @@ def segment_foci_tiled(tile, radius=3, threshold=10, remove_border_foci=False, r
         regions (numpy.ndarray, optional): Labeled segmentation mask of nuclei to find foci in. Default is none.
     
     """
-    return find_foci(tile, radius, threshold, remove_border_foci, regions)
+    return find_foci(tiles, **kwargs)
 
 # from https://github.com/cheeseman-lab/brieflow/blob/main/workflow/lib/phenotype/extract_phenotype_cp_emulator.py#L361
-def find_foci(data, radius=3, threshold=10, remove_border_foci=False, regions=None):
+def find_foci(data, radius=3, threshold=10, min_distance=1, remove_border_foci=False, regions=None):
     """Detect foci in the given image using a white tophat filter and other processing steps.
     
     Args:
@@ -46,11 +46,10 @@ def find_foci(data, radius=3, threshold=10, remove_border_foci=False, regions=No
     # Label connected components in the mask
     labeled = ski.measure.label(mask)
     # Apply watershed algorithm to refine segmentation
-    labeled = apply_watershed(labeled, regions=regions, smooth=1)
+    labeled = apply_watershed(labeled, regions=regions, smooth=1, min_distance=min_distance)
 
     if remove_border_foci:
         # Remove foci touching the border
-        border_mask = data > 0
         labeled = remove_border(labeled, regions)
 
     return labeled
@@ -79,7 +78,7 @@ def log_ndi(data, sigma=1, *args, **kwargs):
     # Suppress precision warning from skimage
     return ski.img_as_uint(arr_)
 
-def apply_watershed(img, regions = None, smooth=4):
+def apply_watershed(img, regions = None, smooth=4, min_distance=1):
     """Apply the watershed algorithm to the given image to refine segmentation.
 
     Args:
@@ -113,7 +112,7 @@ def apply_watershed(img, regions = None, smooth=4):
 
     return result.astype(np.uint16)
 
-def remove_border(labels, mask, dilate=1):
+def remove_border(labels, mask, dilate=3):
     """Remove labeled regions that touch the border of the given mask.
 
     Args:
@@ -125,8 +124,8 @@ def remove_border(labels, mask, dilate=1):
         labels (numpy.ndarray): Labeled image with border regions removed.
     """
     # Dilate the mask to ensure regions touching the border are included
+    mask = ski.segmentation.find_boundaries(mask, mode="outer")
     mask = ski.morphology.binary_dilation(mask, np.ones((dilate, dilate)))
-
     # Identify labels that need to be removed
     remove = np.unique(labels[mask])
 
