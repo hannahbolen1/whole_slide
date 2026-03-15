@@ -2,6 +2,52 @@ from deeptile import lift
 import skimage as ski
 from scipy import ndimage as ndi
 import numpy as np
+from deeptile.core.data import Output
+from deeptile.core.lift import lift
+from deeptile.core.utils import compute_dask
+from functools import partial
+
+def cellpose_segmentation(model_parameters, eval_parameters, output_format='masks'):
+
+    """Generate lifted function for the Cellpose segmentation algorithm.
+
+    Parameters
+    ----------
+    model_parameters : dict
+        Dictionary of model parameters.
+    eval_parameters : dict
+        Dictionary of evaluation parameters.
+    output_format : str, optional
+        Format of the output. Supported formats are 'masks' and 'polygons'. Default is 'masks'.
+
+    Returns
+    -------
+    func_segment : Callable
+        Lifted function for the Cellpose segmentation algorithm.
+    """
+
+    from cellpose.models import CellposeModel
+    from cellpose.io import logger_setup
+    logger_setup()
+
+    model = CellposeModel(**model_parameters)
+
+    @lift
+    def _func_segment(tile, index, tile_index, stitch_index, tiling):
+
+        tile = compute_dask(tile)
+        if tile.max() > 1000:
+            mask = model.eval(tile, **eval_parameters)[0]
+            return mask
+        else:
+            return np.zeros(tile.shape, dtype="uint16")
+
+    def func_segment(tiles):
+
+        return _func_segment(tiles, tiles.index_iterator, tiles.tile_indices_iterator, tiles.stitch_indices_iterator,
+                             tiles.profile.tiling)
+
+    return func_segment
 
 @lift
 def segment_foci_tiled(tiles, **kwargs):
@@ -134,3 +180,37 @@ def remove_border(labels, mask, dilate=3):
     labels.flat[np.in1d(labels, remove)] = 0
 
     return labels
+
+def filter_by_region(labeled, threshold, score=lambda r: r.mean_intensity, intensity_image=None, relabel=True):
+    """Apply a filter to label image. The `score` function takes a single region 
+    as input and returns a score. 
+    If scores are boolean, regions where the score is false are removed.
+    Otherwise, the function `threshold` is applied to the list of scores to 
+    determine the minimum score at which a region is kept.
+    If `relabel` is true, the regions are relabeled starting from 1.
+    """
+    # make copy of labeled image
+    labeled = labeled.copy().astype(int)
+    # calculate region properties
+    regions = ski.measure.regionprops(labeled, intensity_image=intensity_image)
+    # caluclate scores for each region
+    scores = np.array([score(r) for r in regions])
+
+    if all([s in (True, False) for s in scores]):
+        # identify regions to cut based on boolean scores
+        cut = [r.label for r, s in zip(regions, scores) if not s]
+    else:
+        # determine threshold value for scores
+        if callable(threshold):
+            t = threshold(scores)
+        else:
+            t = threshold
+        cut = [r.label for r, s in zip(regions, scores) if s < t]
+
+    # remove identified regions from the labeled image
+    labeled.flat[np.isin(labeled.flat[:], cut)] = 0
+    
+    if relabel:
+        labeled, _, _ = ski.segmentation.relabel_sequential(labeled)
+
+    return labeled
