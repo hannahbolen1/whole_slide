@@ -29,7 +29,6 @@ def neighbor_measurements(labeled, distances=[1, 10], n_cpu=1):
     return concat(dfs, axis=1, join="outer").reset_index()
 
 def closest_objects(labeled, n_cpu=1):
-    from myutils import feature_table
     from scipy.spatial import cKDTree
 
     features = {
@@ -38,7 +37,7 @@ def closest_objects(labeled, n_cpu=1):
         "label": lambda r: r.label,
     }
 
-    df = feature_table(labeled, labeled, features)
+    df = feature_table(labeled, features, labeled)
 
     # Handle cases with fewer than 3 objects
     if len(df) < 3:
@@ -98,7 +97,7 @@ def object_neighbors(labeled, distance=1):
 
     labels = [r.label for r in regions]
 
-    neighbors_disk = skimage.morphology.disk(distance)
+    neighbors_disk = ski.morphology.disk(distance)
 
     perimeter_disk = cp_disk(distance + 0.5)
 
@@ -116,21 +115,21 @@ def neighbor_info(
     labeled, outlined, label, bbox, distance, neighbors_disk=None, perimeter_disk=None
 ):
     if neighbors_disk is None:
-        neighbors_disk = skimage.morphology.disk(distance)
+        neighbors_disk = ski.morphology.disk(distance)
     if perimeter_disk is None:
         perimeter_disk = cp_disk(distance + 0.5)
 
     label_mask = subimage(labeled, bbox, pad=distance)
     outline_mask = subimage(outlined, bbox, pad=distance) == label
 
-    dilated = skimage.morphology.binary_dilation(
+    dilated = ski.morphology.binary_dilation(
         label_mask == label, footprint=neighbors_disk
     )
     neighbors = np.unique(label_mask[dilated])
     neighbors = neighbors[(neighbors != 0) & (neighbors != label)]
     n_neighbors = len(neighbors)
 
-    dilated_neighbors = skimage.morphology.binary_dilation(
+    dilated_neighbors = ski.morphology.binary_dilation(
         (label_mask != label) & (label_mask != 0), footprint=perimeter_disk
     )
     percent_touching = (outline_mask & dilated_neighbors).sum() / outline_mask.sum()
