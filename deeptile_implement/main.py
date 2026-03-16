@@ -15,9 +15,10 @@ root = "/Users/hannahbolen/Desktop/image_analysis/"
 # img_name = 'o8p_day18.vsi'
 img_name = "o8p_day24_s12.ome.tif"
 img_path = os.path.join(root, img_name)
-img = da.from_array(tifffile.imread(img_path))[:, 29500:29500+5120, 10700:10700+5120]
-dt_nuclei = deeptile.load(img[0])
-dt_foci = deeptile.load(img[1])
+
+with tifffile.TiffFile(img_path) as tif:
+    dt_nuclei = deeptile.load(tif.pages[0].asarray())
+    dt_foci = deeptile.load(tif.pages[1].asarray())
 
 # Configure
 tile_size = (512, 512)
@@ -29,8 +30,7 @@ tiles_nuclei = tiles_nuclei.pad()
 tiles_foci = dt_foci.get_tiles(tile_size, overlap)
 tiles_foci = tiles_foci.pad()
 # Individual tile
-tiles_nuclei[0, 0]
-tiles_foci[0, 0]
+
 
 
 # Segment tiles and stitch
@@ -41,15 +41,24 @@ cellpose = utils.cellpose_segmentation(model_parameters, eval_parameters)
 masks_nuclei = cellpose(tiles_nuclei)
 mask_nuclei = stitch.stitch_masks(masks_nuclei)
 
+# save mask
+mask_file = "".join([img_path.split(".")[0], "_MASK.tif"])
+img_dtype = tifffile.TiffFile(img_path).pages[0].dtype
+tifffile.imwrite(mask_file, mask_nuclei.astype(img_dtype))
 
 ## find foci
 ## make tiled nuclei mask with same profile as tiled foci
 import_masks_nuclei = tiles_foci.import_data(mask_nuclei, "image").unpad().pad() # need to unpad, pad bc bug in package code
+
 # segment foci and stitch
 kwargs = {"radius":2, "threshold":25, "min_distance":1, "regions":import_masks_nuclei, "remove_border_foci":True}
 masks_foci = utils.segment_foci_tiled(tiles_foci, **kwargs)
 mask_foci = stitch.stitch_masks(masks_foci)
 
+#save foci mask
+foci_mask_file = "".join([img_path.split(".")[0], "_FOCI_MASK.tif"])
+img_dtype = tifffile.TiffFile(img_path).pages[0].dtype
+tifffile.imwrite(foci_mask_file, mask_foci.astype(img_dtype))
 
 dfs = []
 dfs.append(

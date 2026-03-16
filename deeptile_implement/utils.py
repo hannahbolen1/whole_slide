@@ -7,6 +7,51 @@ from deeptile.core.lift import lift
 from deeptile.core.utils import compute_dask
 from functools import partial
 
+def coverslip_mask(
+    img,
+    ds=32,
+):
+    """
+    Mask area outside coverslip.
+    Args:
+        img: 2D dask array or numpy array
+        downscale (int, optional): Downsample factor for mask processing. Default is 32.
+    Returns:
+        full_mask (Bool): boolean mask at full resolution
+    """
+    if ds:
+        img_ds = img[::ds,::ds]
+    else:
+        img_ds = img
+
+    edges = ski.feature.canny(img_ds, sigma=1, low_threshold=5)
+    edges = ski.morphology.dilation(edges, footprint=np.ones((10, 10)))
+    mask = edges>ski.filters.threshold_otsu(edges)
+    mask = ndi.binary_fill_holes(ski.util.invert(mask))
+    labels = ski.measure.label(mask)
+
+    # keep largest object only
+    props = ski.measure.regionprops(labels)
+    if not props:
+        raise ValueError("No coverslip region detected from rim.")
+    filled = labels == max(props, key=lambda r: r.area).label
+    
+    filled = ski.filters.gaussian(ski.morphology.isotropic_erosion(filled, radius=20), sigma=3, preserve_range=True)>0
+    # # erode inward to remove bright edge region
+    # if ds:
+    #     erosion_small = max(1, 150 // ds)
+    # else:
+    #     erosion_small = 150
+    # filled = ski.morphology.binary_erosion(filled, ski.morphology.disk(erosion_small))
+
+    # back to full resolution
+    if ds:
+        full_mask = ski.transform.rescale(filled, ds)
+    else:
+        full_mask = filled
+    
+    return full_mask
+
 def cellpose_segmentation(model_parameters, eval_parameters, output_format='masks'):
 
     """Generate lifted function for the Cellpose segmentation algorithm.
