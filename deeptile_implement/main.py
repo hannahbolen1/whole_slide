@@ -1,4 +1,3 @@
-from extract_features import features_basic, foci_features, feature_table, neighbor_measurements
 import os
 import deeptile
 import numpy as np
@@ -7,8 +6,8 @@ import tifffile
 import dask.array as da
 import utils
 import skimage as ski
-import extract_features
 import pandas as pd
+from extract_features import features_basic, foci_features, feature_table, neighbor_measurements
 
 root = "/Users/hannahbolen/Desktop/image_analysis/"
 tiff_folder = "tiff_images"
