@@ -236,6 +236,10 @@ def feature_table(labels, features, data=None):
     Returns:
         pd.DataFrame: DataFrame containing extracted features with one row per label and one column per feature.
     """
+    if hasattr(labels, "compute"):
+        labels = labels.compute()
+    if hasattr(data, "compute"):
+        data = data.compute()
     # Extract regions from the labeled segmentation mask
     regions = ski.measure.regionprops(labels, intensity_image=data)
 
