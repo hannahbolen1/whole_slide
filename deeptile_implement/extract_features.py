@@ -266,6 +266,8 @@ features_basic = {
     "j": lambda r: r.centroid[1],
     "label": lambda r: r.label,
     "bounds": lambda r: r.bbox,
+    "intensity_mean": lambda r: r.intensity_mean,
+    "intensity_max": lambda r: r.intensity_max 
 }
 
 def count_labels(labels, return_list=False):
