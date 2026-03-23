@@ -1,0 +1,7 @@
+Load nuclei page = 4 min
+Whole cellpose block segmenting = 57 min
+Load foci age = 5 min
+Whole segment foci block = 21 min
+Feature extract = 1.5 min
+
+ 
