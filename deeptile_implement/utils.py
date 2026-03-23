@@ -46,7 +46,14 @@ def coverslip_mask(
 
     # back to full resolution
     if ds:
-        full_mask = ski.transform.rescale(filled, ds)
+        # full_mask = ski.transform.rescale(filled, ds)
+        full_mask = ski.transform.resize(
+            filled.astype(float),
+            (img.shape[0], img.shape[1]),
+            order=0,
+            preserve_range=True,
+            anti_aliasing=False,
+        ) > 0.5
     else:
         full_mask = filled
     
