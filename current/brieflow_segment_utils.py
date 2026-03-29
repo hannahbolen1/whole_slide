@@ -13,6 +13,7 @@ and ensure consistent behavior across different segmentation methods.
 import numpy as np
 from collections import defaultdict
 from skimage.measure import regionprops
+import dask.array as da
 
 
 def image_log_scale(data, bottom_percentile=10, floor_threshold=50, ignore_zero=True):
@@ -27,34 +28,58 @@ def image_log_scale(data, bottom_percentile=10, floor_threshold=50, ignore_zero=
     Returns:
         numpy.ndarray: Scaled image data after log scaling.
     """
-    # Safety check: return early for empty or all-zero data
-    if data.size == 0 or np.all(data == 0):
-        return data
+    is_dask = isinstance(data, da.Array)
 
-    # Convert input data to float
+    # Handle empty arrays early if shape is known
+    if data.size == 0:
+        return data.astype(float)
+
+    # Convert to float
     data = data.astype(float)
 
-    # Select data based on whether to ignore zero values or not
-    if ignore_zero:
-        data_perc = data[data > 0]
+    if is_dask:
+        # Dask-safe percentile calculation
+        if ignore_zero:
+            # Replace zeros/non-positives with NaN so they are ignored
+            positive = data[data > 0]
+            positive = positive.compute_chunk_sizes()
+            bottom = da.percentile(positive, bottom_percentile)
+        else:
+            bottom = da.percentile(data.ravel(), bottom_percentile)
+
+        # Clip values below bottom without in-place assignment
+        clipped = da.maximum(data, bottom)
+
+        # Apply log scaling
+        scaled = da.log10(clipped - bottom + 1)
+
+        # Apply floor
+        floor = np.log10(floor_threshold)
+        scaled = da.maximum(scaled, floor)
+
+        return scaled - floor
     else:
-        data_perc = data
+        # Select data based on whether to ignore zero values or not
+        if ignore_zero:
+            data_perc = data[data > 0]
+        else:
+            data_perc = data
 
-    # Determine the bottom percentile value
-    bottom = np.percentile(data_perc, bottom_percentile)
+        # Determine the bottom percentile value
+        bottom = np.percentile(data_perc, bottom_percentile)
 
-    # Set values below the bottom percentile to the bottom value
-    data[data < bottom] = bottom
+        # Set values below the bottom percentile to the bottom value
+        data[data < bottom] = bottom
 
-    # Apply log scaling with floor threshold
-    scaled = np.log10(data - bottom + 1)
+        # Apply log scaling with floor threshold
+        scaled = np.log10(data - bottom + 1)
 
-    # Cut out noisy bits based on the floor threshold
-    floor = np.log10(floor_threshold)
-    scaled[scaled < floor] = floor
+        # Cut out noisy bits based on the floor threshold
+        floor = np.log10(floor_threshold)
+        scaled[scaled < floor] = floor
 
-    # Subtract the floor value
-    return scaled - floor
+        # Subtract the floor value
+        return scaled - floor
 
 
 def center_pixels(label_image):
@@ -74,6 +99,67 @@ def center_pixels(label_image):
         ultimate[i, j] = r.label
     return ultimate  # Return the image with labels assigned to center pixels
 
+
+
+def dask_image_log_scale(data, bottom_percentile=10, floor_threshold=50, ignore_zero=True):
+    """Apply log scaling to an image.
+
+    Args:
+        data (numpy.ndarray | dask.array.Array): Input image data.
+        bottom_percentile (int, optional): Percentile value for determining the bottom threshold. Default is 10.
+        floor_threshold (int, optional): Floor threshold for cutting out noisy bits. Default is 50.
+        ignore_zero (bool, optional): Whether to ignore zero values in the data. Default is True.
+
+    Returns:
+        numpy.ndarray | dask.array.Array: Scaled image data after log scaling.
+            Returns a dask array if the input was a dask array, otherwise a numpy array.
+    """
+
+    is_dask = isinstance(data, da.Array)
+
+
+    xp = da if is_dask else np
+
+    # Safety check: return early for empty or all-zero data
+    if data.size == 0:
+        return data
+
+    all_zero = xp.all(data == 0)
+    if is_dask:
+        all_zero = all_zero.compute()
+    if all_zero:
+        return data
+
+    # Convert input data to float
+    data = data.astype(float)
+
+    # Select data based on whether to ignore zero values or not
+    # Note: dask supports boolean indexing but produces unknown-length chunks;
+    # we only use it transiently here for the percentile calculation.
+    if ignore_zero:
+        data_perc = data[data > 0]
+    else:
+        data_perc = data
+
+    # Determine the bottom percentile value (always resolve to a Python scalar)
+    if is_dask:
+       bottom = float(da.percentile(data_perc.ravel(), bottom_percentile).compute().item())
+    else:
+        bottom = np.percentile(data_perc, bottom_percentile)
+
+    # Set values below the bottom percentile to the bottom value.
+    # da.Array does not support boolean index assignment, so use where() for both backends.
+    data = xp.where(data < bottom, bottom, data)
+
+    # Apply log scaling with floor threshold
+    scaled = xp.log10(data - bottom + 1)
+
+    # Cut out noisy bits based on the floor threshold
+    floor = float(np.log10(floor_threshold))  # scalar – fine for both backends
+    scaled = xp.where(scaled < floor, floor, scaled)
+
+    # Subtract the floor value
+    return scaled - floor
 
 def relabel_array(arr, new_label_dict):
     """Map values in an integer array based on `new_label_dict`, a dictionary from old to new values.
