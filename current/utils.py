@@ -6,6 +6,7 @@ from deeptile.core.data import Output
 from deeptile.core.lift import lift
 from deeptile.core.utils import compute_dask
 from functools import partial
+import dask.array as da
 
 def coverslip_mask(
     img,
@@ -59,7 +60,7 @@ def coverslip_mask(
     
     return full_mask
 
-def cellpose_segmentation(model_parameters, eval_parameters, output_format='masks'):
+def cellpose_segmentation(model_parameters, eval_parameters, threshold = 1000, output_format='masks'):
 
     """Generate lifted function for the Cellpose segmentation algorithm.
 
@@ -88,11 +89,16 @@ def cellpose_segmentation(model_parameters, eval_parameters, output_format='mask
     def _func_segment(tile, index, tile_index, stitch_index, tiling):
 
         tile = compute_dask(tile)
-        if tile.max() > 1000:
+        if tile.max() > threshold:
             mask = model.eval(tile, **eval_parameters)[0]
             return mask
         else:
-            return np.zeros(tile.shape, dtype="uint16")
+            if tile.ndim == 3:
+                mask =  da_singlechannel_zeros(tile)
+                return mask
+            else:
+                mask = np.zeros_like(tile)
+                return mask
 
     def func_segment(tiles):
 
@@ -195,7 +201,7 @@ def apply_watershed(img, regions = None, smooth=4, min_distance=1):
 
     # Identify local maxima in the distance transform
     local_max_coords = ski.feature.peak_local_max(
-        distance, footprint=np.ones((3, 3)), labels=regions, exclude_border=False, min_distance=1 ## if need to adjust -- start with min_distance=1
+        distance, footprint=np.ones((3, 3)), labels=regions, exclude_border=True, min_distance=1 ## if need to adjust -- start with min_distance=1
     )
 
     # Create a boolean mask for peaks
@@ -266,3 +272,19 @@ def filter_by_region(labeled, threshold, score=lambda r: r.mean_intensity, inten
         labeled, _, _ = ski.segmentation.relabel_sequential(labeled)
 
     return labeled
+
+
+
+def da_singlechannel_zeros(arr):
+    """
+    Create a dask array of zeros with the same shape as `arr`,
+    excluding the shortest dimension (color channels).
+    """
+    shape = arr.shape
+    shortest_axis = int(np.argmin(shape))
+    
+    # Build the output shape and chunks, dropping the shortest axis
+    out_shape = tuple(s for i, s in enumerate(shape) if i != shortest_axis)
+    out_chunks = tuple(c for i, c in enumerate(arr.chunks) if i != shortest_axis)
+    
+    return da.zeros(out_shape, chunks=out_chunks, dtype=arr.dtype)
