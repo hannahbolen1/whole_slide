@@ -46,7 +46,6 @@ def closest_objects(labeled, n_cpu=1):
         result_df["first_neighbor_distance"] = np.nan
         result_df["second_neighbor"] = np.nan
         result_df["second_neighbor_distance"] = np.nan
-        result_df["angle_between_neighbors"] = np.nan
 
         # If we have exactly 2 objects, we can fill in the first neighbor info
         if len(df) == 2:
@@ -78,8 +77,6 @@ def closest_objects(labeled, n_cpu=1):
         for v, p0, p1 in zip(df[["i", "j"]].values, first_neighbors, second_neighbors)
     ]
 
-    df["angle_between_neighbors"] = np.array(angles) * (180 / np.pi)
-
     return df.drop(columns=["i", "j"]).set_index("label")
 
 
@@ -88,7 +85,7 @@ def object_neighbors(labeled, distance=1):
     from pandas import DataFrame
 
     outlined = (
-        boundaries(labeled, connectivity=EDGE_CONNECTIVITY, mode="inner") * labeled
+        boundaries(labeled, connectivity=EDGE_CONNECTIVITY, mode="outer") * labeled
     )
 
     regions = regionprops(labeled)
@@ -209,17 +206,17 @@ def cp_disk(radius):
     strel[x * x + y * y <= radius2] = 1
     return strel
 
-DEFAULT_METADATA_COLS = [
-    "day",
-    "condition",
-    "image",
-    "nucleus_i",
-    "nucleus_j",
-    "nucleus_bounds_0",
-    "nucleus_bounds_1",
-    "nucleus_bounds_2",
-    "nucleus_bounds_3",
-]
+# DEFAULT_METADATA_COLS = [
+#     "day",
+#     "condition",
+#     "image",
+#     "nucleus_i",
+#     "nucleus_j",
+#     "nucleus_bounds_0",
+#     "nucleus_bounds_1",
+#     "nucleus_bounds_2",
+#     "nucleus_bounds_3",
+# ]
 
 
 def feature_table(labels, features, data=None):
@@ -271,7 +268,10 @@ features_basic = {
     "label": lambda r: r.label,
     "bounds": lambda r: r.bbox,
     "intensity_mean": lambda r: r.intensity_mean,
-    "intensity_max": lambda r: r.intensity_max 
+    "intensity_max": lambda r: r.intensity_max,
+    "intensity_min": lambda r: r.intensity_min,
+    "intensity_std": lambda r: r.intensity_std,
+    "eccentricity": lambda r: r.eccentricity
 }
 
 def count_labels(labels, return_list=False):
@@ -295,3 +295,7 @@ def count_labels(labels, return_list=False):
     if return_list:
         return num_labels, ls
     return num_labels
+
+
+
+
