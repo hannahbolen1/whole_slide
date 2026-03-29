@@ -14,6 +14,8 @@ import numpy as np
 from collections import defaultdict
 from skimage.measure import regionprops
 import dask.array as da
+from deeptile.core.lift import lift
+from deeptile.core.utils import compute_dask
 
 
 def image_log_scale(data, bottom_percentile=10, floor_threshold=50, ignore_zero=True):
@@ -185,12 +187,15 @@ def relabel_array(arr, new_label_dict):
     return arr_[arr]  # Return the relabeled array
 
 
+
+
+
 def reconcile_nuclei_cells(nuclei, cells, how="consensus"):
     """Reconcile nuclei and cells labels based on their overlap.
 
     Args:
-        nuclei (numpy.ndarray): Nuclei mask.
-        cells (numpy.ndarray): Cell mask.
+        nuclei (deeptile Tile): Nuclei mask.
+        cells (deeptile Tile): Cell mask.
         how (str, optional): Method to reconcile labels.
             - 'consensus': Only keep nucleus-cell pairs where label matches are unique.
             - 'contained_in_cells': Keep multiple nuclei for a single cell but merge them.
@@ -238,10 +243,10 @@ def reconcile_nuclei_cells(nuclei, cells, how="consensus"):
         nuclei_per_cell[len(nuclei_labels)] += 1
 
     # Print statistics
-    print("\nNuclei per cell statistics:")
-    print("--------------------------")
-    for num_nuclei, count in sorted(nuclei_per_cell.items()):
-        print(f"Cells with {num_nuclei} nuclei: {count}")
+    # print("\nNuclei per cell statistics:")
+    # print("--------------------------")
+    # for num_nuclei, count in sorted(nuclei_per_cell.items()):
+    #     print(f"Cells with {num_nuclei} nuclei: {count}")
     print("--------------------------\n")
 
     if how == "contained_in_cells":
@@ -268,7 +273,7 @@ def reconcile_nuclei_cells(nuclei, cells, how="consensus"):
 
     # If no matches found, return zero arrays
     if len(keep) == 0:
-        return np.zeros_like(nuclei), np.zeros_like(cells)
+        return np.zeros_like(nuclei), np.zeros_like(cells), nuclei_per_cell
 
     # Extract nuclei and cells to keep
     keep_nuclei, keep_cells = zip(*keep)
@@ -293,4 +298,39 @@ def reconcile_nuclei_cells(nuclei, cells, how="consensus"):
 
     # Convert arrays to integers
     nuclei, cells = nuclei.astype(int), cells.astype(int)
+    
+    return nuclei, cells, nuclei_per_cell
+
+
+def tiled_reconcile_nuclei_cells(nuclei, cells, howT="consensus"):
+    
+    totals = defaultdict(int)
+    @lift
+    def _func_reconc(nuclei_tile, nuclei_index, nuclei_tile_index, nuclei_stitch_index, nuclei_tiling, 
+                      cell_tile, cell_index, cell_tile_index, cell_stitch_index, cell_tiling):
+
+        nuclei_tile = compute_dask(nuclei_tile)
+        cell_tile = compute_dask(cell_tile)
+
+        nuclei, cells, nuclei_per_cell = reconcile_nuclei_cells(nuclei_tile, cell_tile, how=howT)
+
+        for num_nuclei, count in nuclei_per_cell.items():
+            totals[num_nuclei] += count
+
+        return nuclei, cells
+
+    def func_reconc(nuclei_tiles, cells_tiles):
+
+        return _func_reconc(nuclei_tiles, nuclei_tiles.index_iterator, nuclei_tiles.tile_indices_iterator, nuclei_tiles.stitch_indices_iterator,
+                             nuclei_tiles.profile.tiling, cells_tiles, cells_tiles.index_iterator, cells_tiles.tile_indices_iterator, cells_tiles.stitch_indices_iterator,
+                             cells_tiles.profile.tiling)
+    
+    nuclei, cells = func_reconc(nuclei, cells)
+    # Print statistics
+    print("\nNuclei per cell statistics:")
+    print("--------------------------")
+    for num_nuclei, count in sorted(totals.items()):
+        print(f"Cells with {num_nuclei} nuclei: {count}")
+    print("--------------------------\n")
+
     return nuclei, cells
