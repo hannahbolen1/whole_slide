@@ -1,6 +1,7 @@
 import numpy as np
+import dask.array as da
 
-def fixup_scipy_ndimage_result(whatever_it_returned):
+def fixup_scipy_ndimage_result(whatever_it_returned, dask=True):
     """Convert a result from scipy.ndimage to a numpy array
     
     scipy.ndimage has the annoying habit of returning a single, bare
@@ -11,9 +12,15 @@ def fixup_scipy_ndimage_result(whatever_it_returned):
     scind.maximum(image, labels, [1,2]) returns a list
     """
     if getattr(whatever_it_returned, "__getitem__", False):
-        return np.array(whatever_it_returned)
+        if dask:
+            return da.array(whatever_it_returned)
+        else:
+            return np.array(whatever_it_returned)
     else:
-        return np.array([whatever_it_returned])
+        if dask:
+            return da.array([whatever_it_returned])
+        else:
+            return np.array([whatever_it_returned])
 
 def strel_disk(radius):
     """Create a disk structuring element for morphological operations
