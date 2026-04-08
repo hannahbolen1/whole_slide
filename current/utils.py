@@ -128,12 +128,13 @@ def segment_foci_tiled(tiles, **kwargs):
     
 
 # from https://github.com/cheeseman-lab/brieflow/blob/main/workflow/lib/phenotype/extract_phenotype_cp_emulator.py#L361
-def find_foci(data, radius=3, threshold=10, min_distance=1, remove_border_foci=True, regions=None, border_mask=None):
+def find_foci(data, radius=2, sigma=3,threshold=10, min_distance=1, remove_border_foci=True, regions=None, border_mask=None):
     """Detect foci in the given image using a white tophat filter and other processing steps.
     
     Args:
         data (numpy.ndarray): Input image data.
         radius (int, optional): Radius of the disk used in the white tophat filter. Default is 3.
+        sigma (int,optional): Standard deviation of the Gaussian kernel used in Laplacian of Gaussian filter.
         threshold (float, optional): Threshold value for identifying foci in the processed image. Default is 10.
         remove_border_foci (bool, optional): Flag to remove foci touching the image border. Default is False.
         regions (numpy.ndarray, optional): Labeled segmentation mask of nuclei to find foci in. Default is none.
@@ -147,7 +148,7 @@ def find_foci(data, radius=3, threshold=10, min_distance=1, remove_border_foci=T
     )
 
     # Apply Laplacian of Gaussian to the filtered image
-    tophat_log = log_ndi(tophat, sigma=radius)
+    tophat_log = log_ndi(tophat, sigma=sigma)
 
     # Threshold the image to create a binary mask
     mask = tophat_log > threshold
@@ -210,7 +211,7 @@ def apply_watershed(img, regions = None, smooth=4, min_distance=1):
 
     # Identify local maxima in the distance transform
     local_max_coords = ski.feature.peak_local_max(
-        distance, footprint=np.ones((3, 3)), labels=regions, exclude_border=True, min_distance=min_distance ## if need to adjust -- start with min_distance=1
+        distance, labels=regions, exclude_border=True, min_distance=min_distance ## if need to adjust -- start with min_distance=1
     )
 
     # Create a boolean mask for peaks
