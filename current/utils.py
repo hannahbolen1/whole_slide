@@ -21,7 +21,8 @@ def coverslip_mask(
         full_mask (Bool): boolean mask at full resolution
     """
     if ds:
-        img_ds = img[::ds,::ds]
+        img_ds = img.copy()
+        img_ds = img_ds[::ds,::ds]
     else:
         img_ds = img
 
@@ -119,10 +120,15 @@ def segment_foci_tiled(tiles, **kwargs):
         regions (numpy.ndarray, optional): Labeled segmentation mask of nuclei to find foci in. Default is none.
     
     """
-    return find_foci(tiles, **kwargs)
+    if tiles.max() > 0:
+        return find_foci(tiles, **kwargs)
+    else:
+        mask = np.zeros_like(tiles)
+        return mask
+    
 
 # from https://github.com/cheeseman-lab/brieflow/blob/main/workflow/lib/phenotype/extract_phenotype_cp_emulator.py#L361
-def find_foci(data, radius=3, threshold=10, min_distance=1, remove_border_foci=False, regions=None):
+def find_foci(data, radius=3, threshold=10, min_distance=1, remove_border_foci=True, regions=None, border_mask=None):
     """Detect foci in the given image using a white tophat filter and other processing steps.
     
     Args:
@@ -153,9 +159,12 @@ def find_foci(data, radius=3, threshold=10, min_distance=1, remove_border_foci=F
     labeled = apply_watershed(labeled, regions=regions, smooth=1, min_distance=min_distance)
 
     if remove_border_foci:
-        # Remove foci touching the border
-        labeled = remove_border(labeled, regions)
+        if regions is not None:# Remove foci touching the border
+            labeled = remove_border(labeled, regions)
+        elif border_mask is not None:
+            labeled = remove_border(labeled, border_mask)
 
+    labeled, _, _ = ski.segmentation.relabel_sequential(labeled)
     return labeled
 
 def log_ndi(data, sigma=1, *args, **kwargs):
@@ -201,7 +210,7 @@ def apply_watershed(img, regions = None, smooth=4, min_distance=1):
 
     # Identify local maxima in the distance transform
     local_max_coords = ski.feature.peak_local_max(
-        distance, footprint=np.ones((3, 3)), labels=regions, exclude_border=True, min_distance=1 ## if need to adjust -- start with min_distance=1
+        distance, footprint=np.ones((3, 3)), labels=regions, exclude_border=True, min_distance=min_distance ## if need to adjust -- start with min_distance=1
     )
 
     # Create a boolean mask for peaks
@@ -235,7 +244,8 @@ def remove_border(labels, mask, dilate=3):
 
     # Remove the identified labels from the labeled image
     labels = labels.copy()
-    labels.flat[np.in1d(labels, remove)] = 0
+    # labels.flat[np.in1d(labels, remove)] = 0
+    labels = np.where(np.isin(labels, remove),0,labels)
 
     return labels
 
