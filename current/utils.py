@@ -7,6 +7,8 @@ from deeptile.core.lift import lift
 from deeptile.core.utils import compute_dask
 from functools import partial
 import dask.array as da
+from tifffile import memmap
+import tifffile
 
 def coverslip_mask(
     img,
@@ -126,9 +128,29 @@ def segment_foci_tiled(tiles, **kwargs):
         mask = np.zeros_like(tiles)
         return mask
     
+def foci_per_region(obj_num, min_i, max_i, min_j, max_j, img_path, labels_path, **kwargs):
+    img = tifffile.memmap(img_path)
+    labels = tifffile.memmap(labels_path)
+
+    patch = img[
+        min_i : max_i,
+        min_j : max_j,
+    ]
+    labels = labels[
+        min_i : max_i,
+        min_j : max_j,
+    ]
+
+    labels = labels == obj_num
+    labels = labels > 0
+    patch = patch*labels
+
+    foci = find_foci(patch, border_mask = labels, **kwargs)
+
+    return {obj_num:foci}
 
 # from https://github.com/cheeseman-lab/brieflow/blob/main/workflow/lib/phenotype/extract_phenotype_cp_emulator.py#L361
-def find_foci(data, radius=2, sigma=3,threshold=10, min_distance=1, remove_border_foci=True, regions=None, border_mask=None):
+def find_foci(data, radius=2, border_mask=None, sigma=3,threshold=10, min_distance=1, remove_border_foci=True, regions=None):
     """Detect foci in the given image using a white tophat filter and other processing steps.
     
     Args:
