@@ -194,8 +194,8 @@ def reconcile_nuclei_cells(nuclei, cells, how="consensus"):
     """Reconcile nuclei and cells labels based on their overlap.
 
     Args:
-        nuclei (deeptile Tile): Nuclei mask.
-        cells (deeptile Tile): Cell mask.
+        nuclei (memmap array): Nuclei mask.
+        cells (memmap array): Cell mask.
         how (str, optional): Method to reconcile labels.
             - 'consensus': Only keep nucleus-cell pairs where label matches are unique.
             - 'contained_in_cells': Keep multiple nuclei for a single cell but merge them.
@@ -243,10 +243,10 @@ def reconcile_nuclei_cells(nuclei, cells, how="consensus"):
         nuclei_per_cell[len(nuclei_labels)] += 1
 
     # Print statistics
-    # print("\nNuclei per cell statistics:")
-    # print("--------------------------")
-    # for num_nuclei, count in sorted(nuclei_per_cell.items()):
-    #     print(f"Cells with {num_nuclei} nuclei: {count}")
+    print("\nNuclei per cell statistics:")
+    print("--------------------------")
+    for num_nuclei, count in sorted(nuclei_per_cell.items()):
+        print(f"Cells with {num_nuclei} nuclei: {count}")
     print("--------------------------\n")
 
     if how == "contained_in_cells":

@@ -97,7 +97,8 @@ def cellpose_segmentation(model_parameters, eval_parameters, threshold = 1000, o
             return mask
         else:
             if tile.ndim == 3:
-                mask =  da_singlechannel_zeros(tile)
+                axis = np.argmin(tile.shape)
+                mask = np.zeros_like(np.take(tile, 0, axis=axis))
                 return mask
             else:
                 mask = np.zeros_like(tile)
@@ -135,11 +136,11 @@ def foci_per_region(obj_num, min_i, max_i, min_j, max_j, img_path, labels_path, 
     patch = img[
         min_i : max_i,
         min_j : max_j,
-    ]
+    ].copy()
     labels = labels[
         min_i : max_i,
         min_j : max_j,
-    ]
+    ].copy()
 
     labels = labels == obj_num
     labels = labels > 0
