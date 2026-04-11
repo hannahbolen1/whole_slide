@@ -3,6 +3,8 @@ import numpy as np
 import skimage as ski
 from collections import defaultdict
 import pandas as pd
+import scipy.spatial
+from tifffile import memmap
 
 
 # adapted from brieflow cp_emulator -- need to go through and rework places using featuretable etc
@@ -72,10 +74,10 @@ def closest_objects(labeled, n_cpu=1):
     first_neighbors = df[["i", "j"]].values[df["first_neighbor"].values]
     second_neighbors = df[["i", "j"]].values[df["second_neighbor"].values]
 
-    angles = [
-        angle(v, p0, p1)
-        for v, p0, p1 in zip(df[["i", "j"]].values, first_neighbors, second_neighbors)
-    ]
+    # angles = [
+    #     angle(v, p0, p1)
+    #     for v, p0, p1 in zip(df[["i", "j"]].values, first_neighbors, second_neighbors)
+    # ]
 
     return df.drop(columns=["i", "j"]).set_index("label")
 
@@ -84,9 +86,9 @@ def object_neighbors(labeled, distance=1):
     from skimage.measure import regionprops
     from pandas import DataFrame
 
-    outlined = (
-        boundaries(labeled, connectivity=EDGE_CONNECTIVITY, mode="outer") * labeled
-    )
+    # outlined = (
+    #     boundaries(labeled, connectivity=EDGE_CONNECTIVITY, mode="outer") * labeled
+    # )
 
     regions = regionprops(labeled)
 
@@ -100,7 +102,7 @@ def object_neighbors(labeled, distance=1):
 
     info_dicts = [
         neighbor_info(
-            labeled, outlined, label, bbox, distance, neighbors_disk, perimeter_disk
+            labeled, label, bbox, distance, neighbors_disk, perimeter_disk
         )
         for label, bbox in zip(labels, bboxes)
     ]
@@ -109,7 +111,7 @@ def object_neighbors(labeled, distance=1):
 
 
 def neighbor_info(
-    labeled, outlined, label, bbox, distance, neighbors_disk=None, perimeter_disk=None
+    labeled, label, bbox, distance, neighbors_disk=None, perimeter_disk=None
 ):
     if neighbors_disk is None:
         neighbors_disk = ski.morphology.disk(distance)
@@ -117,7 +119,7 @@ def neighbor_info(
         perimeter_disk = cp_disk(distance + 0.5)
 
     label_mask = subimage(labeled, bbox, pad=distance)
-    outline_mask = subimage(outlined, bbox, pad=distance) == label
+    # outline_mask = subimage(outlined, bbox, pad=distance) == label
 
     dilated = ski.morphology.binary_dilation(
         label_mask == label, footprint=neighbors_disk
@@ -126,10 +128,10 @@ def neighbor_info(
     neighbors = neighbors[(neighbors != 0) & (neighbors != label)]
     n_neighbors = len(neighbors)
 
-    dilated_neighbors = ski.morphology.binary_dilation(
-        (label_mask != label) & (label_mask != 0), footprint=perimeter_disk
-    )
-    percent_touching = (outline_mask & dilated_neighbors).sum() / outline_mask.sum()
+    # dilated_neighbors = ski.morphology.binary_dilation(
+    #     (label_mask != label) & (label_mask != 0), footprint=perimeter_disk
+    # )
+    # percent_touching = (outline_mask & dilated_neighbors).sum() / outline_mask.sum()
 
     return {
         "label": label,
@@ -218,6 +220,31 @@ def cp_disk(radius):
 #     "nucleus_bounds_3",
 # ]
 
+def feature_table_per_region(obj_num, min_i, max_i, min_j, max_j, labels_path, features, img_path=None):
+    """
+    Args:
+        labels_path (np.ndarray): Path to labeled segmentation mask defining objects to extract features from.
+        features (dict): Dictionary of feature names and their corresponding functions.
+        img_path (np.ndarray, optional): Path to image data. Default is None.
+    """
+    labels = memmap(labels_path, mode='r')[
+        min_i : max_i,
+        min_j : max_j,
+    ].copy()
+
+    labels[labels != obj_num] = 0
+
+    if img_path is None:
+        img = None
+    else:
+        img = memmap(img_path, mode='r')[
+        min_i : max_i,
+        min_j : max_j,
+    ].copy()
+    result = feature_table(labels, features, img)
+    
+    return 
+    
 
 def feature_table(labels, features, data=None):
     """Apply functions in feature dictionary to regions in data specified by integer labels.
@@ -274,6 +301,12 @@ features_basic = {
     "eccentricity": lambda r: r.eccentricity
 }
 
+def foci_count(label_image, intensity_image):
+    return count_labels(intensity_image)
+
+def foci_area(label_image, intensity_image):
+    return (intensity_image > 0).sum()
+
 def count_labels(labels, return_list=False):
     """Count the unique non-zero labels in a labeled segmentation mask.
 
@@ -295,7 +328,5 @@ def count_labels(labels, return_list=False):
     if return_list:
         return num_labels, ls
     return num_labels
-
-
 
 
