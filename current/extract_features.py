@@ -6,139 +6,6 @@ import pandas as pd
 import scipy.spatial
 from tifffile import memmap
 
-
-# adapted from brieflow cp_emulator -- need to go through and rework places using featuretable etc
-
-# constants they define im not sure why (with comments)
-EDGE_CONNECTIVITY = 2 # cellprofiler uses edge connectivity of 1, which exlucdes pixels catty-corner to a boundary
-
-def neighbor_measurements(labeled, distances=[1, 10], n_cpu=1):
-    from pandas import concat
-
-    dfs = [
-        object_neighbors(labeled, distance=distance).rename(
-            columns=lambda x: x + "_" + str(distance)
-        )
-        for distance in distances
-    ]
-
-    dfs.append(
-        closest_objects(labeled, n_cpu=n_cpu).drop(
-            columns=["first_neighbor", "second_neighbor"]
-        )
-    )
-
-    return concat(dfs, axis=1, join="outer").reset_index()
-
-def closest_objects(labeled, n_cpu=1):
-    from scipy.spatial import cKDTree
-
-    features = {
-        "i": lambda r: r.centroid[0],
-        "j": lambda r: r.centroid[1],
-        "label": lambda r: r.label,
-    }
-
-    df = feature_table(labeled, features, labeled)
-
-    # Handle cases with fewer than 3 objects
-    if len(df) < 3:
-        result_df = df.copy()
-        result_df["first_neighbor"] = np.nan
-        result_df["first_neighbor_distance"] = np.nan
-        result_df["second_neighbor"] = np.nan
-        result_df["second_neighbor_distance"] = np.nan
-
-        # If we have exactly 2 objects, we can fill in the first neighbor info
-        if len(df) == 2:
-            # Each object's first neighbor is the other object
-            result_df["first_neighbor"] = result_df.index[::-1].values
-            # Calculate distance between the two objects
-            points = result_df[["i", "j"]].values
-            distance = np.sqrt(((points[0] - points[1]) ** 2).sum())
-            result_df["first_neighbor_distance"] = distance
-            # No second neighbor, angle remains NaN
-
-        return result_df.drop(columns=["i", "j"]).set_index("label")
-
-    kdt = cKDTree(df[["i", "j"]])
-
-    distances, indexes = kdt.query(df[["i", "j"]], 3, workers=n_cpu)
-
-    df["first_neighbor"], df["first_neighbor_distance"] = indexes[:, 1], distances[:, 1]
-    df["second_neighbor"], df["second_neighbor_distance"] = (
-        indexes[:, 2],
-        distances[:, 2],
-    )
-
-    first_neighbors = df[["i", "j"]].values[df["first_neighbor"].values]
-    second_neighbors = df[["i", "j"]].values[df["second_neighbor"].values]
-
-    # angles = [
-    #     angle(v, p0, p1)
-    #     for v, p0, p1 in zip(df[["i", "j"]].values, first_neighbors, second_neighbors)
-    # ]
-
-    return df.drop(columns=["i", "j"]).set_index("label")
-
-
-def object_neighbors(labeled, distance=1):
-    from skimage.measure import regionprops
-    from pandas import DataFrame
-
-    # outlined = (
-    #     boundaries(labeled, connectivity=EDGE_CONNECTIVITY, mode="outer") * labeled
-    # )
-
-    regions = regionprops(labeled)
-
-    bboxes = [r.bbox for r in regions]
-
-    labels = [r.label for r in regions]
-
-    neighbors_disk = ski.morphology.disk(distance)
-
-    perimeter_disk = cp_disk(distance + 0.5)
-
-    info_dicts = [
-        neighbor_info(
-            labeled, label, bbox, distance, neighbors_disk, perimeter_disk
-        )
-        for label, bbox in zip(labels, bboxes)
-    ]
-
-    return DataFrame(info_dicts).set_index("label")
-
-
-def neighbor_info(
-    labeled, label, bbox, distance, neighbors_disk=None, perimeter_disk=None
-):
-    if neighbors_disk is None:
-        neighbors_disk = ski.morphology.disk(distance)
-    if perimeter_disk is None:
-        perimeter_disk = cp_disk(distance + 0.5)
-
-    label_mask = subimage(labeled, bbox, pad=distance)
-    # outline_mask = subimage(outlined, bbox, pad=distance) == label
-
-    dilated = ski.morphology.binary_dilation(
-        label_mask == label, footprint=neighbors_disk
-    )
-    neighbors = np.unique(label_mask[dilated])
-    neighbors = neighbors[(neighbors != 0) & (neighbors != label)]
-    n_neighbors = len(neighbors)
-
-    # dilated_neighbors = ski.morphology.binary_dilation(
-    #     (label_mask != label) & (label_mask != 0), footprint=perimeter_disk
-    # )
-    # percent_touching = (outline_mask & dilated_neighbors).sum() / outline_mask.sum()
-
-    return {
-        "label": label,
-        "number_neighbors": n_neighbors,
-        "percent_touching": percent_touching,
-    }
-
 def subimage(stack, bbox, pad=0):
     """
     Extract a rectangular region from a stack of images with optional padding.
@@ -330,3 +197,141 @@ def count_labels(labels, return_list=False):
     return num_labels
 
 
+
+
+
+'''
+old i dont use anymore
+'''
+
+# adapted from brieflow cp_emulator -- need to go through and rework places using featuretable etc
+
+# constants they define im not sure why (with comments)
+EDGE_CONNECTIVITY = 2 # cellprofiler uses edge connectivity of 1, which exlucdes pixels catty-corner to a boundary
+
+def neighbor_measurements(labeled, distances=[1, 10], n_cpu=1):
+    from pandas import concat
+
+    dfs = [
+        object_neighbors(labeled, distance=distance).rename(
+            columns=lambda x: x + "_" + str(distance)
+        )
+        for distance in distances
+    ]
+
+    dfs.append(
+        closest_objects(labeled, n_cpu=n_cpu).drop(
+            columns=["first_neighbor", "second_neighbor"]
+        )
+    )
+
+    return concat(dfs, axis=1, join="outer").reset_index()
+
+def closest_objects(labeled, n_cpu=1):
+    from scipy.spatial import cKDTree
+
+    features = {
+        "i": lambda r: r.centroid[0],
+        "j": lambda r: r.centroid[1],
+        "label": lambda r: r.label,
+    }
+
+    df = feature_table(labeled, features, labeled)
+
+    # Handle cases with fewer than 3 objects
+    if len(df) < 3:
+        result_df = df.copy()
+        result_df["first_neighbor"] = np.nan
+        result_df["first_neighbor_distance"] = np.nan
+        result_df["second_neighbor"] = np.nan
+        result_df["second_neighbor_distance"] = np.nan
+
+        # If we have exactly 2 objects, we can fill in the first neighbor info
+        if len(df) == 2:
+            # Each object's first neighbor is the other object
+            result_df["first_neighbor"] = result_df.index[::-1].values
+            # Calculate distance between the two objects
+            points = result_df[["i", "j"]].values
+            distance = np.sqrt(((points[0] - points[1]) ** 2).sum())
+            result_df["first_neighbor_distance"] = distance
+            # No second neighbor, angle remains NaN
+
+        return result_df.drop(columns=["i", "j"]).set_index("label")
+
+    kdt = cKDTree(df[["i", "j"]])
+
+    distances, indexes = kdt.query(df[["i", "j"]], 3, workers=n_cpu)
+
+    df["first_neighbor"], df["first_neighbor_distance"] = indexes[:, 1], distances[:, 1]
+    df["second_neighbor"], df["second_neighbor_distance"] = (
+        indexes[:, 2],
+        distances[:, 2],
+    )
+
+    first_neighbors = df[["i", "j"]].values[df["first_neighbor"].values]
+    second_neighbors = df[["i", "j"]].values[df["second_neighbor"].values]
+
+    # angles = [
+    #     angle(v, p0, p1)
+    #     for v, p0, p1 in zip(df[["i", "j"]].values, first_neighbors, second_neighbors)
+    # ]
+
+    return df.drop(columns=["i", "j"]).set_index("label")
+
+
+def object_neighbors(labeled, distance=1):
+    from skimage.measure import regionprops
+    from pandas import DataFrame
+
+    # outlined = (
+    #     boundaries(labeled, connectivity=EDGE_CONNECTIVITY, mode="outer") * labeled
+    # )
+
+    regions = regionprops(labeled)
+
+    bboxes = [r.bbox for r in regions]
+
+    labels = [r.label for r in regions]
+
+    neighbors_disk = ski.morphology.disk(distance)
+
+    perimeter_disk = cp_disk(distance + 0.5)
+
+    info_dicts = [
+        neighbor_info(
+            labeled, label, bbox, distance, neighbors_disk, perimeter_disk
+        )
+        for label, bbox in zip(labels, bboxes)
+    ]
+
+    return DataFrame(info_dicts).set_index("label")
+
+
+def neighbor_info(
+    labeled, label, bbox, distance, neighbors_disk=None, perimeter_disk=None
+):
+    if neighbors_disk is None:
+        neighbors_disk = ski.morphology.disk(distance)
+    if perimeter_disk is None:
+        perimeter_disk = cp_disk(distance + 0.5)
+
+    label_mask = subimage(labeled, bbox, pad=distance)
+    # outline_mask = subimage(outlined, bbox, pad=distance) == label
+
+    dilated = ski.morphology.binary_dilation(
+        label_mask == label, footprint=neighbors_disk
+    )
+    neighbors = np.unique(label_mask[dilated])
+    neighbors = neighbors[(neighbors != 0) & (neighbors != label)]
+    n_neighbors = len(neighbors)
+
+    # dilated_neighbors = ski.morphology.binary_dilation(
+    #     (label_mask != label) & (label_mask != 0), footprint=perimeter_disk
+    # )
+    # percent_touching = (outline_mask & dilated_neighbors).sum() / outline_mask.sum()
+
+    return {
+        "label": label,
+        "number_neighbors": n_neighbors,
+        "percent_touching": percent_touching,
+    }

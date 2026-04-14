@@ -9,6 +9,7 @@ from functools import partial
 import dask.array as da
 from tifffile import memmap
 import tifffile
+import numpy.ma as ma
 
 def coverslip_mask(
     img,
@@ -130,8 +131,8 @@ def segment_foci_tiled(tiles, **kwargs):
         return mask
     
 def foci_per_region(obj_num, min_i, max_i, min_j, max_j, img_path, labels_path, **kwargs):
-    img = tifffile.memmap(img_path)
-    labels = tifffile.memmap(labels_path)
+    img = tifffile.memmap(img_path, mode='r')
+    labels = tifffile.memmap(labels_path, mode='r')
 
     patch = img[
         min_i : max_i,
@@ -142,16 +143,18 @@ def foci_per_region(obj_num, min_i, max_i, min_j, max_j, img_path, labels_path, 
         min_j : max_j,
     ].copy()
 
-    labels = labels == obj_num
+    patch[labels != obj_num] = 0
+    labels = (labels == obj_num)
     labels = labels > 0
-    patch = patch*labels
+    
+    patch_masked = ma.masked_where(labels != obj_num, patch, copy=True)
 
-    foci = find_foci(patch, border_mask = labels, **kwargs)
+    foci = find_foci(patch_masked, border_mask = labels, **kwargs)
 
     return {obj_num:foci}
 
 # from https://github.com/cheeseman-lab/brieflow/blob/main/workflow/lib/phenotype/extract_phenotype_cp_emulator.py#L361
-def find_foci(data, radius=2, border_mask=None, sigma=3,threshold=10, min_distance=1, remove_border_foci=True, regions=None):
+def find_foci(data, radius=2, border_mask=None, sigma=3,threshold=10, threshold_args = None, min_distance=1, remove_border_foci=True, regions=None):
     """Detect foci in the given image using a white tophat filter and other processing steps.
     
     Args:
@@ -174,7 +177,14 @@ def find_foci(data, radius=2, border_mask=None, sigma=3,threshold=10, min_distan
     tophat_log = log_ndi(tophat, sigma=sigma)
 
     # Threshold the image to create a binary mask
-    mask = tophat_log > threshold
+    if callable(threshold):
+        img_threshold = threshold(tophat_log, threshold_args)
+    elif type(threshold) == int:
+        img_threshold = threshold
+    else:
+        raise TypeError("Threshold must be type int or function")
+    # threshold = ski.filters.threshold_otsu(tophat_log)
+    mask = tophat_log > img_threshold
     # Remove small objects from the mask
     mask = ski.morphology.remove_small_objects(mask, min_size=(radius**2))
     # Label connected components in the mask
