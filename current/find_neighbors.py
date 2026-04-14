@@ -3,21 +3,23 @@ from misc_utils import strel_disk
 import scipy.ndimage as ndi
 import scipy.signal
 import tifffile
+from misc_utils import strel_disk
 
-def neighbors_for_object(object_number, min_i, max_i, min_j, max_j, labels_path, strel, distance):
-    img = tifffile.memmap(labels_path)
-    img = img[::2,::2]
-    # img,_,_ = ski.segmentation.relabel_sequential(img, offset=1)
+def neighbors_for_object(object_number, min_i, max_i, min_j, max_j, labels_path, distance):
+    img = tifffile.memmap(labels_path, mode='r')
+
     patch = img[
         min_i : max_i,
         min_j : max_j,
-    ]
+    ].copy()
 
     #
     # Find the neighbors
     #
     
     patch_mask = patch == (object_number)
+
+    strel = strel_disk(distance)
 
     if distance <= 5:
         extended = ndi.binary_dilation(patch_mask, strel)
@@ -52,6 +54,11 @@ def objects_bounds(label_image, distance):
     maximums_j = np.empty(nobjects, dtype=np.int64)
 
     for k, slc in enumerate(objs):
+        if type(distance) == list:
+            d = int(distance[k])
+        else:
+            d = distance
+
         if slc is None:
             minimums_i[k] = 0
             maximums_i[k] = 0
@@ -60,9 +67,9 @@ def objects_bounds(label_image, distance):
             continue
 
         si, sj = slc
-        minimums_i[k] = max(si.start - distance, 0)
-        maximums_i[k] = min(si.stop  + distance, label_image.shape[0])
-        minimums_j[k] = max(sj.start - distance, 0)
-        maximums_j[k] = min(sj.stop  + distance, label_image.shape[1])
+        minimums_i[k] = max(si.start - d, 0)
+        maximums_i[k] = min(si.stop  + d, label_image.shape[0])
+        minimums_j[k] = max(sj.start - d, 0)
+        maximums_j[k] = min(sj.stop  + d, label_image.shape[1])
 
     return minimums_i, maximums_i, minimums_j, maximums_j
